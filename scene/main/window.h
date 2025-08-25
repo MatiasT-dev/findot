@@ -120,7 +120,7 @@ private:
 	bool initialized = false;
 
 	String title;
-	String tr_title;
+	String displayed_title;
 	mutable int current_screen = 0;
 	mutable Point2i position;
 	mutable Size2i size = Size2i(DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE);
@@ -134,7 +134,6 @@ private:
 	WindowInitialPosition initial_position = WINDOW_INITIAL_POSITION_ABSOLUTE;
 	bool force_native = false;
 
-	bool use_font_oversampling = false;
 	bool transient = false;
 	bool transient_to_focused = false;
 	bool exclusive = false;
@@ -159,6 +158,8 @@ private:
 	RID accessibility_title_element;
 	RID accessibility_announcement_element;
 	String announcement;
+	String accessibility_name;
+	String accessibility_description;
 
 	void _make_window();
 	void _clear_window();
@@ -251,11 +252,14 @@ private:
 	void _update_mouse_over(Vector2 p_pos) override;
 	void _mouse_leave_viewport() override;
 
+	void _update_displayed_title();
+
 	Ref<Shortcut> debugger_stop_shortcut;
 
 	static int root_layout_direction;
 
 protected:
+	virtual void _pre_popup() {} // Called after "about_to_popup", but before window is shown.
 	virtual Rect2i _popup_adjust_rect() const { return Rect2i(); }
 	virtual void _post_popup() {}
 
@@ -294,7 +298,7 @@ public:
 
 	void set_title(const String &p_title);
 	String get_title() const;
-	String get_translated_title() const;
+	String get_displayed_title() const;
 
 	void set_initial_position(WindowInitialPosition p_initial_position);
 	WindowInitialPosition get_initial_position() const;
@@ -327,6 +331,8 @@ public:
 
 	void set_flag(Flags p_flag, bool p_enabled);
 	bool get_flag(Flags p_flag) const;
+
+	bool is_popup() const;
 
 	bool is_maximize_allowed() const;
 
@@ -385,9 +391,6 @@ public:
 	void set_content_scale_factor(real_t p_factor);
 	real_t get_content_scale_factor() const;
 
-	void set_use_font_oversampling(bool p_oversampling);
-	bool is_using_font_oversampling() const;
-
 	void set_mouse_passthrough_polygon(const Vector<Vector2> &p_region);
 	Vector<Vector2> get_mouse_passthrough_polygon() const;
 
@@ -398,6 +401,7 @@ public:
 	Window *get_exclusive_child() const { return exclusive_child; }
 	HashSet<Window *> get_transient_children() const { return transient_children; }
 	Window *get_parent_visible_window() const;
+	Window *get_non_popup_window() const;
 	Viewport *get_parent_viewport() const;
 
 	virtual void popup(const Rect2i &p_screen_rect = Rect2i());
@@ -418,11 +422,18 @@ public:
 
 	void grab_focus();
 	bool has_focus() const;
+	bool has_focus_or_active_popup() const;
 
 	void start_drag();
 	void start_resize(DisplayServer::WindowResizeEdge p_edge);
 
 	Rect2i get_usable_parent_rect() const;
+
+	void set_accessibility_name(const String &p_name);
+	String get_accessibility_name() const;
+
+	void set_accessibility_description(const String &p_description);
+	String get_accessibility_description() const;
 
 	void accessibility_announcement(const String &p_announcement);
 
@@ -433,6 +444,9 @@ public:
 	bool is_layout_rtl() const;
 
 #ifndef DISABLE_DEPRECATED
+	void set_use_font_oversampling(bool p_oversampling);
+	bool is_using_font_oversampling() const;
+
 	void set_auto_translate(bool p_enable);
 	bool is_auto_translating() const;
 #endif
@@ -501,6 +515,7 @@ public:
 	virtual Transform2D get_final_transform() const override;
 	virtual Transform2D get_screen_transform_internal(bool p_absolute_position = false) const override;
 	virtual Transform2D get_popup_base_transform() const override;
+	virtual Transform2D get_popup_base_transform_native() const override;
 	virtual Viewport *get_section_root_viewport() const override;
 	virtual bool is_attached_in_viewport() const override;
 
