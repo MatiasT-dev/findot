@@ -82,29 +82,57 @@ TEST_CASE("[FileAccess] CSV read") {
 }
 
 TEST_CASE("[FileAccess] Get as UTF-8 String") {
-	Ref<FileAccess> f_lf = FileAccess::open(TestUtils::get_data_path("line_endings_lf.test.txt"), FileAccess::READ);
-	REQUIRE(f_lf.is_valid());
-	String s_lf = f_lf->get_as_utf8_string();
-	f_lf->seek(0);
-	String s_lf_nocr = f_lf->get_as_utf8_string(true);
-	CHECK(s_lf == "Hello darkness\nMy old friend\nI've come to talk\nWith you again\n");
-	CHECK(s_lf_nocr == "Hello darkness\nMy old friend\nI've come to talk\nWith you again\n");
+	SUBCASE("Newline == \\n (Unix)") {
+		Ref<FileAccess> f_lf = FileAccess::open(TestUtils::get_data_path("line_endings_lf.test.txt"), FileAccess::READ);
+		REQUIRE(f_lf.is_valid());
+		String s_lf = f_lf->get_as_utf8_string();
+		CHECK(s_lf == "Hello darkness\nMy old friend\nI've come to talk\nWith you again\n");
+		f_lf->seek(0);
+		CHECK(f_lf->get_line() == "Hello darkness");
+		CHECK(f_lf->get_line() == "My old friend");
+		CHECK(f_lf->get_line() == "I've come to talk");
+		CHECK(f_lf->get_line() == "With you again");
+		CHECK(f_lf->get_error() == Error::OK);
+	}
 
-	Ref<FileAccess> f_crlf = FileAccess::open(TestUtils::get_data_path("line_endings_crlf.test.txt"), FileAccess::READ);
-	REQUIRE(f_crlf.is_valid());
-	String s_crlf = f_crlf->get_as_utf8_string();
-	f_crlf->seek(0);
-	String s_crlf_nocr = f_crlf->get_as_utf8_string(true);
-	CHECK(s_crlf == "Hello darkness\r\nMy old friend\r\nI've come to talk\r\nWith you again\r\n");
-	CHECK(s_crlf_nocr == "Hello darkness\nMy old friend\nI've come to talk\nWith you again\n");
+	SUBCASE("Newline == \\r\\n (Windows)") {
+		Ref<FileAccess> f_crlf = FileAccess::open(TestUtils::get_data_path("line_endings_crlf.test.txt"), FileAccess::READ);
+		REQUIRE(f_crlf.is_valid());
+		String s_crlf = f_crlf->get_as_utf8_string();
+		CHECK(s_crlf == "Hello darkness\r\nMy old friend\r\nI've come to talk\r\nWith you again\r\n");
+		f_crlf->seek(0);
+		CHECK(f_crlf->get_line() == "Hello darkness");
+		CHECK(f_crlf->get_line() == "My old friend");
+		CHECK(f_crlf->get_line() == "I've come to talk");
+		CHECK(f_crlf->get_line() == "With you again");
+		CHECK(f_crlf->get_error() == Error::OK);
+	}
 
-	Ref<FileAccess> f_cr = FileAccess::open(TestUtils::get_data_path("line_endings_cr.test.txt"), FileAccess::READ);
-	REQUIRE(f_cr.is_valid());
-	String s_cr = f_cr->get_as_utf8_string();
-	f_cr->seek(0);
-	String s_cr_nocr = f_cr->get_as_utf8_string(true);
-	CHECK(s_cr == "Hello darkness\rMy old friend\rI've come to talk\rWith you again\r");
-	CHECK(s_cr_nocr == "Hello darknessMy old friendI've come to talkWith you again");
+	SUBCASE("Newline == \\r (Legacy macOS)") {
+		Ref<FileAccess> f_cr = FileAccess::open(TestUtils::get_data_path("line_endings_cr.test.txt"), FileAccess::READ);
+		REQUIRE(f_cr.is_valid());
+		String s_cr = f_cr->get_as_utf8_string();
+		CHECK(s_cr == "Hello darkness\rMy old friend\rI've come to talk\rWith you again\r");
+		f_cr->seek(0);
+		CHECK(f_cr->get_line() == "Hello darkness");
+		CHECK(f_cr->get_line() == "My old friend");
+		CHECK(f_cr->get_line() == "I've come to talk");
+		CHECK(f_cr->get_line() == "With you again");
+		CHECK(f_cr->get_error() == Error::OK);
+	}
+
+	SUBCASE("Newline == Mixed") {
+		Ref<FileAccess> f_mix = FileAccess::open(TestUtils::get_data_path("line_endings_mixed.test.txt"), FileAccess::READ);
+		REQUIRE(f_mix.is_valid());
+		String s_mix = f_mix->get_as_utf8_string();
+		CHECK(s_mix == "Hello darkness\nMy old friend\r\nI've come to talk\rWith you again");
+		f_mix->seek(0);
+		CHECK(f_mix->get_line() == "Hello darkness");
+		CHECK(f_mix->get_line() == "My old friend");
+		CHECK(f_mix->get_line() == "I've come to talk");
+		CHECK(f_mix->get_line() == "With you again");
+		CHECK(f_mix->get_error() == Error::ERR_FILE_EOF); // Not a bug; the file lacks a final newline.
+	}
 }
 
 TEST_CASE("[FileAccess] Get/Store floating point values") {
@@ -217,6 +245,53 @@ TEST_CASE("[FileAccess] Get/Store floating point half precision values") {
 
 		reference.resize_initialized(4095);
 		CHECK(reference == partial_data);
+	}
+}
+
+TEST_CASE("[FileAccess] Cursor positioning") {
+	Ref<FileAccess> f = FileAccess::open(TestUtils::get_data_path("line_endings_lf.test.txt"), FileAccess::READ);
+	REQUIRE(f.is_valid());
+
+	String full = f->get_as_utf8_string();
+	int64_t len = full.length();
+
+	SUBCASE("Initial position is zero") {
+		f->seek(0);
+		CHECK(f->get_position() == 0);
+	}
+
+	SUBCASE("seek() moves cursor to absolute position") {
+		f->seek(5);
+		CHECK(f->get_position() == 5);
+	}
+
+	SUBCASE("seek() moves cursor beyond file size") {
+		f->seek(len + 10);
+		CHECK(f->get_position() == len + 10);
+	}
+
+	SUBCASE("seek_end() moves cursor to end of file") {
+		f->seek_end(0);
+		CHECK(f->get_position() == len);
+	}
+
+	SUBCASE("seek_end() with positive offset") {
+		f->seek_end(1);
+		CHECK(f->get_position() == len + 1);
+	}
+
+	SUBCASE("seek_end() with negative offset") {
+		f->seek_end(-1);
+		CHECK(f->get_position() == len - 1);
+
+		char last_char = full[full.length() - 1];
+		CHECK(f->get_8() == last_char);
+	}
+
+	SUBCASE("seek_end() beyond file size") {
+		f->seek(5);
+		f->seek_end(-len - 10); // seeking to a position below 0; ignored.
+		CHECK(f->get_position() == 5);
 	}
 }
 

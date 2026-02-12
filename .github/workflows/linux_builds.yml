@@ -1,18 +1,21 @@
 name: 🐧 Linux Builds
 on:
   workflow_call:
+  workflow_dispatch:
 
 # Global Settings
 env:
   SCONS_FLAGS: >-
     dev_mode=yes
     module_text_server_fb_enabled=yes
-    "accesskit_sdk_path=${{ github.workspace }}/accesskit-c-0.17.0/"
-  GODOT_CPP_BRANCH: 4.4
+    "accesskit_sdk_path=${{ github.workspace }}/accesskit-c-0.18.0/"
+  GODOT_CPP_BRANCH: 4.5
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  TSAN_OPTIONS: suppressions=${{ github.workspace }}/misc/error_suppressions/tsan.txt
-  UBSAN_OPTIONS: suppressions=${{ github.workspace }}/misc/error_suppressions/ubsan.txt
+  ASAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/asan.txt
+  LSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/lsan.txt
+  TSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/tsan.txt
+  UBSAN_OPTIONS: color=always:print_suppressions=1:suppressions=${{ github.workspace }}/misc/error_suppressions/ubsan.txt
 
 jobs:
   build-linux:
@@ -107,7 +110,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -159,12 +162,12 @@ jobs:
         uses: dsaltares/fetch-gh-release-asset@1.1.2
         with:
           repo: AccessKit/accesskit-c
-          version: tags/0.17.0
-          file: accesskit-c-0.17.0.zip
-          target: accesskit-c-0.17.0/accesskit_c.zip
+          version: tags/0.18.0
+          file: accesskit-c-0.18.0.zip
+          target: accesskit-c-0.18.0/accesskit_c.zip
 
       - name: Extract pre-built AccessKit
-        run: unzip -o accesskit-c-0.17.0/accesskit_c.zip
+        run: unzip -o accesskit-c-0.18.0/accesskit_c.zip
 
       - name: Install mold linker
         if: matrix.proj-test
@@ -235,10 +238,17 @@ jobs:
           git diff --color --exit-code && ! git ls-files --others --exclude-standard | sed -e 's/^/New doc file missing in PR: /' | grep 'xml$'
 
       # Check API backwards compatibility
-      - name: Check for GDExtension compatibility
+      - name: Check for GDExtension compatibility – JSON check
         if: matrix.api-compat
         run: |
           ./misc/scripts/validate_extension_api.sh "${{ matrix.bin }}"
+
+      - name: Test GDExtension compatibility – load methods
+        uses: ./.github/actions/godot-compat-test
+        if: matrix.api-compat
+        with:
+          bin: ${{ matrix.bin }}
+          reftags: "4.5-stable,4.4-stable"
 
       # Download and run the test project
       - name: Test Godot project
